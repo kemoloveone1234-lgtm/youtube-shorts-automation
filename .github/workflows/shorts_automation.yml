@@ -1,112 +1,49 @@
-name: YouTube Shorts Automation
+name: Omar Cartoon Automation - Test
 
 on:
-  # Run automatically 3 times per day (UTC times)
-  schedule:
-    - cron: '0 6 * * *'    # 06:00 UTC (11:30 AM IST)
-    - cron: '0 12 * * *'   # 12:00 UTC (05:30 PM IST)
-    - cron: '0 18 * * *'   # 18:00 UTC (11:30 PM IST)
-
-  # Allow manual trigger from GitHub Actions UI
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Dry run — skip YouTube upload (true/false)'
-        required: false
-        default: 'false'
-
-# Prevent multiple runs from overlapping
-concurrency:
-  group: youtube-shorts-automation
-  cancel-in-progress: false
 
 jobs:
-  generate-and-upload:
-    name: Generate & Upload YouTube Short
+  test:
+    name: Test GitHub Video Generator
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    env:
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-      DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+    timeout-minutes: 10
 
     steps:
-      # ── 1. Checkout repository ─────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python 3.11 ──────────────────────────────────────────────
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      # ── 3. Cache pip packages ──────────────────────────────────────────────
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      # ── 4. Install system dependencies ────────────────────────────────────
-      - name: Install system dependencies
+      - name: Install FFmpeg
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg \
-            fonts-dejavu-core \
-            fonts-dejavu-extra
+          sudo apt-get install -y ffmpeg
 
-          # ── Verify critical tools are available ───────────────────────────
-          ffmpeg -version | head -1
-          ffprobe -version | head -1
-          fc-list | grep -i dejavu | head -3
-
-      # ── 5. Install Python dependencies ────────────────────────────────────
-      - name: Install Python dependencies
+      - name: Create output folder
         run: |
-          python -m pip install --upgrade pip
-          pip install setuptools==69.5.1 wheel
-          pip install -r requirements.txt
+          mkdir -p output
 
-      # ── 6. Run the automation pipeline ────────────────────────────────────
-      - name: Run YouTube Shorts automation pipeline
-        id: pipeline
-        run: python main.py
+      - name: Create test 9:16 video
+        run: |
+          ffmpeg \
+            -f lavfi \
+            -i "color=c=0xEAF4FF:s=1080x1920:d=5" \
+            -f lavfi \
+            -i "anullsrc=r=44100:cl=mono" \
+            -t 5 \
+            -c:v libx264 \
+            -pix_fmt yuv420p \
+            -c:a aac \
+            -shortest \
+            output/omar_test.mp4
 
-      # ── 7. Upload output artifacts (for debugging) ────────────────────────
-      - name: Upload output artifacts
-        if: always()
+      - name: Check generated video
+        run: |
+          ls -lh output/omar_test.mp4
+          ffprobe output/omar_test.mp4
+
+      - name: Upload test video
         uses: actions/upload-artifact@v4
         with:
-          name: shorts-output-${{ github.run_number }}
-          path: output/
+          name: omar-test-video
+          path: output/omar_test.mp4
           retention-days: 3
-          if-no-files-found: ignore
-
-      # ── 8. Print failure summary if pipeline crashed ──────────────────────
-      - name: Print failure summary
-        if: failure()
-        run: |
-          echo "## ❌ Pipeline Failed — Run #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Time (UTC):** $(date -u)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Check the logs above for the exact error." >> $GITHUB_STEP_SUMMARY
-          echo "Output artifacts (if any) are attached to this run." >> $GITHUB_STEP_SUMMARY
-
-      # 9. Print success summary ──────────────────────────────────────────
-      - name: Print success summary
-        if: success()
-        run: |
-          echo "## ✅ Pipeline Succeeded — Run #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Time (UTC):** $(date -u)" >> $GITHUB_STEP_SUMMARY
